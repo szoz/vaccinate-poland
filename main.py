@@ -17,9 +17,9 @@ def get_method(request: Request):
     return {'method': request.method}
 
 
-@app.get('/auth', status_code=204)
+@app.get('/auth')
 def validates_password(password: str = '', password_hash: str = ''):
     """Checks if provided password and password_hash match."""
     password_encoded = password.encode('utf8')
-    if sha512(password_encoded).hexdigest() != password_hash:
-        return Response(status_code=401)
+    status_code = 204 if sha512(password_encoded).hexdigest() == password_hash else 401
+    return Response(status_code=status_code)
