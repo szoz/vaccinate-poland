@@ -1,12 +1,14 @@
 from fastapi import FastAPI, Request, Response
 from hashlib import sha512
 from datetime import timedelta
+import logging
 
 from models import Patient
 
 app = FastAPI()
 
 app.patients = []
+logger = logging.getLogger('uvicorn')
 
 
 @app.get('/')
@@ -41,4 +43,5 @@ def register_patient(patient: Patient):
     vaccination_delay = timedelta(days=(len(patient.name) + len(patient.surname)))
     patient.vaccination_date = patient.register_date + vaccination_delay
     app.patients.append(patient)
+    logger.info(f'Added {patient=}')
     return patient
