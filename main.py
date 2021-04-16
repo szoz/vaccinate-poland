@@ -19,7 +19,11 @@ def get_method(request: Request):
 
 @app.get('/auth')
 def validates_password(password: str = '', password_hash: str = ''):
-    """Checks if provided password and password_hash match."""
+    """Check if provided password and password_hash match."""
     password_encoded = password.encode('utf8')
-    status_code = 204 if sha512(password_encoded).hexdigest() == password_hash else 401
+    if not password or sha512(password_encoded).hexdigest() != password_hash:
+        status_code = 401
+    else:
+        status_code = 204
+
     return Response(status_code=status_code)
