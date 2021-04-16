@@ -1,7 +1,12 @@
 from fastapi import FastAPI, Request, Response
 from hashlib import sha512
+from datetime import timedelta
+
+from models import Patient
 
 app = FastAPI()
+
+app.patients = []
 
 
 @app.get('/')
@@ -27,3 +32,13 @@ def validates_password(password: str = '', password_hash: str = ''):
         status_code = 204
 
     return Response(status_code=status_code)
+
+
+@app.post('/register', status_code=201)
+def register_patient(patient: Patient):
+    """Returns registered patient details based on given patient name and surname."""
+    patient.id = len(app.patients) + 1
+    vaccination_delay = timedelta(days=(len(patient.name) + len(patient.surname)))
+    patient.vaccination_date = patient.register_date + vaccination_delay
+    app.patients.append(patient)
+    return patient

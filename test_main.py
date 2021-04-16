@@ -1,5 +1,6 @@
 from fastapi.testclient import TestClient
 from hashlib import sha512
+from datetime import date, timedelta
 
 from main import app
 
@@ -52,3 +53,26 @@ def test_auth():
     assert response_valid.status_code == 204
     for response in responses_invalid:
         assert response.status_code == 401
+
+
+def test_register():
+    """Test patient registration - """
+    test_path = '/register'
+    payloads = [
+        {"name": "Ryszard", "surname": "Kot"},
+        {"name": "Krystyna", "surname": "Janda"},
+        {"name": "Jan", "surname": "Nowak"}
+    ]
+    responses = [client.post(test_path, json=payload) for payload in payloads]
+    id_counter = 1
+
+    for response, payload in zip(responses, payloads):
+        assert response.status_code == 201
+        assert response.json() == {
+            'name': payload['name'],
+            'surname': payload['surname'],
+            'id': id_counter,
+            'register_date': str(date.today()),
+            'vaccination_date': str(date.today() + timedelta(days=len(payload['name']+payload['surname'])))
+        }
+        id_counter += 1
