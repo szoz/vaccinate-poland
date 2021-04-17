@@ -56,23 +56,27 @@ def test_auth():
 
 
 def test_register():
-    """Test patient registration - """
+    """Test returned patient records in '/register' endpoint."""
     test_path = '/register'
     payloads = [
-        {"name": "Ryszard", "surname": "Kot"},
-        {"name": "Krystyna", "surname": "Janda"},
-        {"name": "Jan", "surname": "Nowak"}
+        {'name': 'Ryszard', 'surname': 'Kot', 'delay': 10},
+        {'name': 'Krystyna', 'surname': 'Janda', 'delay': 13},
+        {'name': 'Jan', 'surname': 'Nowak2', 'delay': 8},
+        {'name': 'Jan Stefan', 'surname': 'Nowak', 'delay': 14},
+        {'name': 'Jan', 'surname': 'Nowak!@#$%^&*()_+/', 'delay': 8}
     ]
     responses = [client.post(test_path, json=payload) for payload in payloads]
     id_counter = 1
 
     for response, payload in zip(responses, payloads):
         assert response.status_code == 201
-        assert response.json() == {
+        patient = response.json()
+        delay = payload.pop('delay')
+        assert patient == {
             'name': payload['name'],
             'surname': payload['surname'],
             'id': id_counter,
             'register_date': str(date.today()),
-            'vaccination_date': str(date.today() + timedelta(days=len(payload['name']+payload['surname'])))
+            'vaccination_date': str(date.today() + timedelta(days=delay))
         }
         id_counter += 1

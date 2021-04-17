@@ -40,8 +40,8 @@ def validates_password(password: str = '', password_hash: str = ''):
 def register_patient(patient: Patient):
     """Returns registered patient details based on given patient name and surname."""
     patient.id = len(app.patients) + 1
-    vaccination_delay = timedelta(days=(len(patient.name) + len(patient.surname)))
-    patient.vaccination_date = patient.register_date + vaccination_delay
+    vaccination_delay = len([letter for letter in patient.name + patient.surname if letter.isalpha()])
+    patient.vaccination_date = patient.register_date + timedelta(days=vaccination_delay)
     app.patients.append(patient)
     logger.info(f'Added {patient=}')
     return patient
