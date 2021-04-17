@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 from hashlib import sha512
 from datetime import date, timedelta
@@ -5,6 +6,14 @@ from datetime import date, timedelta
 from main import app
 
 client = TestClient(app)
+
+payloads = [
+    {'name': 'Ryszard', 'surname': 'Kot', 'delay': 10},
+    {'name': 'Krystyna', 'surname': 'Janda', 'delay': 13},
+    {'name': 'Jan', 'surname': 'Nowak2', 'delay': 8},
+    {'name': 'Jan Stefan', 'surname': 'Nowak', 'delay': 14},
+    {'name': 'Jan', 'surname': 'Nowak!@#$%^&*()_+/', 'delay': 8}
+]
 
 
 def test_root():
@@ -56,15 +65,8 @@ def test_auth():
 
 
 def test_register():
-    """Test returned patient records in '/register' endpoint."""
+    """Test adding patient records in '/register' endpoint."""
     test_path = '/register'
-    payloads = [
-        {'name': 'Ryszard', 'surname': 'Kot', 'delay': 10},
-        {'name': 'Krystyna', 'surname': 'Janda', 'delay': 13},
-        {'name': 'Jan', 'surname': 'Nowak2', 'delay': 8},
-        {'name': 'Jan Stefan', 'surname': 'Nowak', 'delay': 14},
-        {'name': 'Jan', 'surname': 'Nowak!@#$%^&*()_+/', 'delay': 8}
-    ]
     responses = [client.post(test_path, json=payload) for payload in payloads]
     id_counter = 1
 
@@ -80,3 +82,19 @@ def test_register():
             'vaccination_date': str(date.today() + timedelta(days=delay))
         }
         id_counter += 1
+
+
+def test_patient():
+    """Tests getting patient records in '/patient' endpoint."""
+    test_path = '/patient/{}'
+    responses_valid = [client.get(test_path.format(pid+1)) for pid, _ in enumerate(payloads)]
+    responses_invalid = {
+        400: client.get(test_path.format(-1)),
+        404: client.get(test_path.format(1000))
+    }
+
+    for response, payload in zip(responses_valid, payloads):
+        assert response.status_code == 200
+        assert response.json().items() >= payload.items()
+    for code, response in responses_invalid.items():
+        assert response.status_code == code
