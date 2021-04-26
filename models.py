@@ -11,5 +11,5 @@ class UnregisteredPatient(BaseModel):
 class Patient(UnregisteredPatient):
     """Patient registered for vaccination."""
     id: int = None
-    register_date: date = None
+    register_date: date = date.today()
     vaccination_date: date = None
