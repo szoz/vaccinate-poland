@@ -99,3 +99,14 @@ def test_patient(client, patient_payloads):
         assert response.json().items() >= payload.items()
     for code, response in responses_invalid.items():
         assert response.status_code == code
+
+
+def test_html(client):
+    """Tests endpoint '/hello' with simple HTML response."""
+    test_path = '/hello'
+    expected_text = f'<h1>Hello! Today date is {date.today()}</h1>'
+
+    response = client.get(test_path)
+    assert response.status_code == 200
+    assert 'text/html' in response.headers['content-type']
+    assert expected_text in response.text

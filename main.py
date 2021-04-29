@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Request, Response, HTTPException, status
+from fastapi.responses import HTMLResponse
 from hashlib import sha512
 from datetime import timedelta, date
 from logging import getLogger
@@ -57,3 +58,10 @@ def get_patient(patient_id: int):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail='Patient not found')
 
     return app.patients[patient_id - 1]
+
+
+@app.get('/hello')
+def read_html():
+    """Return simple HTML response."""
+    text = f'<html><body><h1>Hello! Today date is {date.today()}</h1></body></html>'
+    return HTMLResponse(text)
