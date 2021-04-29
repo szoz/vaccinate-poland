@@ -79,20 +79,19 @@ def check_credentials(creds: HTTPBasicCredentials):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED)
 
 
-@app.get('/login_session', tags=['authentication'])
+@app.post('/login_session', tags=['authentication'])
 def login_session(credentials: HTTPBasicCredentials = Depends(security)):
     """Create session if given credentials are valid."""
     check_credentials(credentials)
-
-    response = Response()
+    response = Response(status_code=status.HTTP_201_CREATED)
     response.set_cookie('session_token', 'chocolate')
-
+    logger.info(f'Login request with {credentials=}')
     return response
 
 
-@app.get('/login_token', tags=['authentication'])
+@app.post('/login_token', status_code=status.HTTP_201_CREATED, tags=['authentication'])
 def login_token(credentials: HTTPBasicCredentials = Depends(security)):
     """Return token if given credentials are valid."""
     check_credentials(credentials)
-
+    logger.info(f'Login request with {credentials=}')
     return {'token': 'tort'}

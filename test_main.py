@@ -119,10 +119,10 @@ def test_login_session(client):
     credentials_invalid = ('admin', '123456')
     credentials_valid = (environ['USER_LOGIN'], environ['USER_PASSWORD'])
 
-    response_invalid = client.get(test_path, auth=credentials_invalid)
-    response_valid = client.get(test_path, auth=credentials_valid)
+    response_invalid = client.post(test_path, auth=credentials_invalid)
+    response_valid = client.post(test_path, auth=credentials_valid)
     assert response_invalid.status_code == 401
-    assert response_valid.status_code == 200
+    assert response_valid.status_code == 201
     assert ['session_token'] == response_valid.cookies.keys()
 
 
@@ -132,8 +132,8 @@ def test_login_token(client):
     credentials_invalid = ('admin', '123456')
     credentials_valid = (environ['USER_LOGIN'], environ['USER_PASSWORD'])
 
-    response_invalid = client.get(test_path, auth=credentials_invalid)
-    response_valid = client.get(test_path, auth=credentials_valid)
+    response_invalid = client.post(test_path, auth=credentials_invalid)
+    response_valid = client.post(test_path, auth=credentials_valid)
     assert response_invalid.status_code == 401
-    assert response_valid.status_code == 200
+    assert response_valid.status_code == 201
     assert ['token'] == list(response_valid.json().keys())
