@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from hashlib import sha512
 from datetime import date, timedelta
+from os import environ
 
 from main import app
 
@@ -87,7 +88,7 @@ def test_register(client, patient_payloads):
 
 
 def test_patient(client, patient_payloads):
-    """Tests getting patient records in '/patient' endpoint based on data added in test_register test case."""
+    """Test getting patient records in '/patient' endpoint based on data added in test_register test case."""
     test_path = '/patient/{}'
     patient_count = len(patient_payloads['patients'])
     responses_valid = [client.get(test_path.format(pid + 1)) for pid in range(patient_count)]
@@ -102,7 +103,7 @@ def test_patient(client, patient_payloads):
 
 
 def test_html(client):
-    """Tests endpoint '/hello' with simple HTML response."""
+    """Test endpoint '/hello' with simple HTML response."""
     test_path = '/hello'
     expected_text = f'<h1>Hello! Today date is {date.today()}</h1>'
 
@@ -110,3 +111,29 @@ def test_html(client):
     assert response.status_code == 200
     assert 'text/html' in response.headers['content-type']
     assert expected_text in response.text
+
+
+def test_login_session(client):
+    """Test cookie session in '/login_session' endpoint."""
+    test_path = '/login_session'
+    credentials_invalid = ('admin', '123456')
+    credentials_valid = (environ['USER_LOGIN'], environ['USER_PASSWORD'])
+
+    response_invalid = client.get(test_path, auth=credentials_invalid)
+    response_valid = client.get(test_path, auth=credentials_valid)
+    assert response_invalid.status_code == 401
+    assert response_valid.status_code == 200
+    assert ['session_token'] == response_valid.cookies.keys()
+
+
+def test_login_token(client):
+    """Test '/login_token' response."""
+    test_path = '/login_token'
+    credentials_invalid = ('admin', '123456')
+    credentials_valid = (environ['USER_LOGIN'], environ['USER_PASSWORD'])
+
+    response_invalid = client.get(test_path, auth=credentials_invalid)
+    response_valid = client.get(test_path, auth=credentials_valid)
+    assert response_invalid.status_code == 401
+    assert response_valid.status_code == 200
+    assert ['token'] == list(response_valid.json().keys())

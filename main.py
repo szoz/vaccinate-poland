@@ -1,8 +1,11 @@
-from fastapi import FastAPI, Request, Response, HTTPException, status
+from fastapi import FastAPI, Request, Response, HTTPException, status, Depends
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.responses import HTMLResponse
 from hashlib import sha512
 from datetime import timedelta, date
 from logging import getLogger
+from secrets import compare_digest
+from os import environ
 
 from models import UnregisteredPatient, Patient
 
@@ -10,6 +13,7 @@ app = FastAPI()
 
 app.patients = []
 logger = getLogger('uvicorn')
+security = HTTPBasic()
 
 
 @app.get('/', tags=['helpers'])
@@ -65,3 +69,30 @@ def read_html():
     """Return simple HTML response."""
     text = f'<html><body><h1>Hello! Today date is {date.today()}</h1></body></html>'
     return HTMLResponse(text)
+
+
+def check_credentials(creds: HTTPBasicCredentials):
+    """Raises exception if given credentials not match (resistant to time atacks)."""
+    correct_username = compare_digest(creds.username, environ['USER_LOGIN'])
+    correct_password = compare_digest(creds.password, environ['USER_PASSWORD'])
+    if not correct_username or not correct_password:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+
+
+@app.get('/login_session', tags=['authentication'])
+def login_session(credentials: HTTPBasicCredentials = Depends(security)):
+    """Create session if given credentials are valid."""
+    check_credentials(credentials)
+
+    response = Response()
+    response.set_cookie('session_token', 'chocolate')
+
+    return response
+
+
+@app.get('/login_token', tags=['authentication'])
+def login_token(credentials: HTTPBasicCredentials = Depends(security)):
+    """Return token if given credentials are valid."""
+    check_credentials(credentials)
+
+    return {'token': 'tort'}
