@@ -2,9 +2,10 @@
 
 Web application supporting COVID-19 vaccination in Poland. 
 
-Application is deployed on Heroku. OpenAPI documentation is available at: 
+Application is deployed on Heroku. API documentation is available at: 
 
-http://vaccinate-poland.herokuapp.com/docs/
+http://vaccinate-poland.herokuapp.com/docs
+http://vaccinate-poland.herokuapp.com/redoc
 	
 ## Technologies
 Project is created with:
