@@ -114,7 +114,7 @@ def test_html(client):
 
 
 def test_login_session(client):
-    """Test cookie session in '/login_session' endpoint."""
+    """Test session receiving in '/login_session' endpoint."""
     test_path = '/login_session'
     credentials_invalid = ('admin', '123456')
     credentials_valid = (environ['USER_LOGIN'], environ['USER_PASSWORD'])
@@ -127,7 +127,7 @@ def test_login_session(client):
 
 
 def test_login_token(client):
-    """Test '/login_token' response."""
+    """Test token receiving in '/login_token' endpoint."""
     test_path = '/login_token'
     credentials_invalid = ('admin', '123456')
     credentials_valid = (environ['USER_LOGIN'], environ['USER_PASSWORD'])
@@ -137,3 +137,47 @@ def test_login_token(client):
     assert response_invalid.status_code == 401
     assert response_valid.status_code == 201
     assert ['token'] == list(response_valid.json().keys())
+
+
+def test_welcome_session(client):
+    """Test session authentication in '/welcome_session' endpoint."""
+    test_path = '/welcome_session'
+    valid_cookies = {'session_token': environ['SESSION_KEY']}
+
+    response_invalid = client.get(test_path, cookies={'session_token': 'invalid'})
+    response_valid_text = client.get(test_path, cookies=valid_cookies)
+    response_valid_html = client.get(test_path, cookies=valid_cookies, params={'format': 'html'})
+    response_valid_json = client.get(test_path, cookies=valid_cookies, params={'format': 'json'})
+
+    assert response_invalid.status_code == 401
+    assert response_valid_text.status_code == 200
+    assert response_valid_text.headers['content-type'].startswith('text/plain')
+    assert response_valid_text.text == 'Welcome!'
+    assert response_valid_json.status_code == 200
+    assert response_valid_json.headers['content-type'].startswith('application/json')
+    assert response_valid_json.json() == {'message': 'Welcome!'}
+    assert response_valid_html.status_code == 200
+    assert response_valid_html.headers['content-type'].startswith('text/html')
+    assert '<h1>Welcome!</h1>' in response_valid_html.text
+
+
+def test_welcome_token(client):
+    """Test token authentication in '/welcome_token' endpoint."""
+    test_path = '/welcome_token'
+    valid_token = environ['TOKEN_KEY']
+
+    response_invalid = client.get(test_path, params={'token': 'invalid'})
+    response_valid_text = client.get(test_path, params={'token': valid_token})
+    response_valid_html = client.get(test_path, params={'token': valid_token, 'format': 'html'})
+    response_valid_json = client.get(test_path, params={'token': valid_token, 'format': 'json'})
+
+    assert response_invalid.status_code == 401
+    assert response_valid_text.status_code == 200
+    assert response_valid_text.headers['content-type'].startswith('text/plain')
+    assert response_valid_text.text == 'Welcome!'
+    assert response_valid_json.status_code == 200
+    assert response_valid_json.headers['content-type'].startswith('application/json')
+    assert response_valid_json.json() == {'message': 'Welcome!'}
+    assert response_valid_html.status_code == 200
+    assert response_valid_html.headers['content-type'].startswith('text/html')
+    assert '<h1>Welcome!</h1>' in response_valid_html.text

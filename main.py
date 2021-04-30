@@ -1,6 +1,6 @@
-from fastapi import FastAPI, Request, Response, HTTPException, status, Depends
+from fastapi import FastAPI, Request, Response, HTTPException, status, Depends, Query
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from hashlib import sha512
 from datetime import timedelta, date
 from logging import getLogger
@@ -85,7 +85,7 @@ def login_session(credentials: HTTPBasicCredentials = Depends(security)):
     logger.info(f'Login request with {credentials=}')
     check_credentials(credentials)
     response = Response(status_code=status.HTTP_201_CREATED)
-    response.set_cookie('session_token', 'chocolate')
+    response.set_cookie('session_token', environ['SESSION_KEY'])
     return response
 
 
@@ -94,4 +94,32 @@ def login_token(credentials: HTTPBasicCredentials = Depends(security)):
     """Return token if given credentials are valid."""
     logger.info(f'Login request with {credentials=}')
     check_credentials(credentials)
-    return {'token': 'tort'}
+    return {'token': environ['TOKEN_KEY']}
+
+
+def format_welcome(message: str, message_format: str):
+    """Returns welcome message response based on given format."""
+    if message_format == 'json':
+        return {'message': f'{message}'}
+    elif message_format == 'html':
+        return HTMLResponse(f'<html><body><h1>{message}</h1></body></html>')
+
+    return PlainTextResponse(f'{message}')
+
+
+@app.get('/welcome_session', tags=['authentication'])
+def welcome_session(request: Request, welcome_format: str = Query('', alias='format')):
+    """Return welcome message to user with valid session based on given format value."""
+    if request.cookies.get('session_token') != environ['SESSION_KEY']:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+
+    return format_welcome('Welcome!', welcome_format)
+
+
+@app.get('/welcome_token', tags=['authentication'])
+def welcome_token(token: str = '', welcome_format: str = Query('', alias='format')):
+    """Return welcome message to user with valid token based on given format value."""
+    if token != environ['TOKEN_KEY']:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+
+    return format_welcome('Welcome!', welcome_format)
