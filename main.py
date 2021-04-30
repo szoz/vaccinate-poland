@@ -1,13 +1,14 @@
-from fastapi import FastAPI, Request, Response, HTTPException, status, Depends, Query
+from fastapi import FastAPI, Request, Response, HTTPException, status, Depends, Query, Path
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 from hashlib import sha512
 from datetime import timedelta, date
 from logging import getLogger
 from secrets import compare_digest
 from os import environ
+from functools import wraps
 
-from models import UnregisteredPatient, Patient
+from models import UnregisteredPatient, Patient, FormatEnum
 
 app = FastAPI()
 
@@ -53,8 +54,8 @@ def register_patient(unregistered_patient: UnregisteredPatient):
     return patient
 
 
-@app.get('/patient/{patient_id}', response_model=Patient, tags=['patient'])
-def get_patient(patient_id: int):
+@app.get('/patient/{id}', response_model=Patient, tags=['patient'])
+def get_patient(patient_id: int = Path(0, alias='id')):
     """Reads patient record with given id."""
     if patient_id <= 0:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail='Invalid ID')
@@ -71,10 +72,10 @@ def read_html():
     return HTMLResponse(text)
 
 
-def check_credentials(creds: HTTPBasicCredentials):
-    """Raises exception if given credentials not match (resistant to time atacks)."""
-    correct_username = compare_digest(creds.username, environ['USER_LOGIN'])
-    correct_password = compare_digest(creds.password, environ['USER_PASSWORD'])
+def check_credentials(credentials: HTTPBasicCredentials):
+    """Raises exception if given credentials not match (resistant to time attacks)."""
+    correct_username = compare_digest(credentials.username, environ['USER_LOGIN'])
+    correct_password = compare_digest(credentials.password, environ['USER_PASSWORD'])
     if not correct_username or not correct_password:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED)
 
@@ -97,29 +98,53 @@ def login_token(credentials: HTTPBasicCredentials = Depends(security)):
     return {'token': environ['TOKEN_KEY']}
 
 
-def format_welcome(message: str, message_format: str):
+def format_welcome(message: str, message_format: FormatEnum):
     """Returns welcome message response based on given format."""
-    if message_format == 'json':
-        return {'message': f'{message}'}
-    elif message_format == 'html':
+    if message_format.value == 'json':
+        return JSONResponse({'message': f'{message}'})
+    elif message_format.value == 'html':
         return HTMLResponse(f'<html><body><h1>{message}</h1></body></html>')
 
     return PlainTextResponse(f'{message}')
 
 
+def session_required(func):
+    """Raises exception if request argument in decorated view function doesn't contain valid session cookie."""
+
+    @wraps(func)
+    def wrapper(request, *args, **kwargs):
+        if not compare_digest(request.cookies.get('session_token'), environ['SESSION_KEY']):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+        return func(request, *args, **kwargs)
+
+    return wrapper
+
+
 @app.get('/welcome_session', tags=['authentication'])
-def welcome_session(request: Request, welcome_format: str = Query('', alias='format')):
-    """Return welcome message to user with valid session based on given format value."""
-    if request.cookies.get('session_token') != environ['SESSION_KEY']:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+@session_required
+def welcome_session(request: Request, welcome_format: FormatEnum = Query(FormatEnum.txt, alias='format')):
+    """Return welcome message to user based on given response format. Endpoint only available to users with valid
+    session cookie - request argument is used in decorator."""
 
     return format_welcome('Welcome!', welcome_format)
 
 
+def token_required(func):
+    """Raises exception if token argument in decorated view function is invalid."""
+
+    @wraps(func)
+    def wrapper(token, *args, **kwargs):
+        if not compare_digest(token, environ['TOKEN_KEY']):
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+        return func(token, *args, **kwargs)
+
+    return wrapper
+
+
 @app.get('/welcome_token', tags=['authentication'])
-def welcome_token(token: str = '', welcome_format: str = Query('', alias='format')):
-    """Return welcome message to user with valid token based on given format value."""
-    if token != environ['TOKEN_KEY']:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
+@token_required
+def welcome_token(token: str = '', welcome_format: FormatEnum = Query(FormatEnum.txt, alias='format')):
+    """Return welcome message to user based on given response format. Endpoint only available to users with valid token
+     - token argument is used in decorator."""
 
     return format_welcome('Welcome!', welcome_format)

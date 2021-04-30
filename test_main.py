@@ -7,13 +7,13 @@ from os import environ
 from main import app
 
 
-@pytest.fixture()
+@pytest.fixture
 def client():
     """Prepare FastAPI test client."""
     return TestClient(app)
 
 
-@pytest.fixture()
+@pytest.fixture
 def patient_payloads():
     """Prepare Patient payloads with expected attributes."""
     patients = [{'name': 'Ryszard', 'surname': 'Kot'},
@@ -139,45 +139,44 @@ def test_login_token(client):
     assert ['token'] == list(response_valid.json().keys())
 
 
-def test_welcome_session(client):
-    """Test session authentication in '/welcome_session' endpoint."""
+@pytest.fixture
+def responses_session(client):
+    """Prepare '/welcome_session' responses for test_welcome."""
     test_path = '/welcome_session'
     valid_cookies = {'session_token': environ['SESSION_KEY']}
+    responses = (client.get(test_path, cookies={'session_token': 'invalid'}),
+                 client.get(test_path, cookies=valid_cookies),
+                 client.get(test_path, cookies=valid_cookies, params={'format': 'html'}),
+                 client.get(test_path, cookies=valid_cookies, params={'format': 'json'}))
 
-    response_invalid = client.get(test_path, cookies={'session_token': 'invalid'})
-    response_valid_text = client.get(test_path, cookies=valid_cookies)
-    response_valid_html = client.get(test_path, cookies=valid_cookies, params={'format': 'html'})
-    response_valid_json = client.get(test_path, cookies=valid_cookies, params={'format': 'json'})
-
-    assert response_invalid.status_code == 401
-    assert response_valid_text.status_code == 200
-    assert response_valid_text.headers['content-type'].startswith('text/plain')
-    assert response_valid_text.text == 'Welcome!'
-    assert response_valid_json.status_code == 200
-    assert response_valid_json.headers['content-type'].startswith('application/json')
-    assert response_valid_json.json() == {'message': 'Welcome!'}
-    assert response_valid_html.status_code == 200
-    assert response_valid_html.headers['content-type'].startswith('text/html')
-    assert '<h1>Welcome!</h1>' in response_valid_html.text
+    return responses
 
 
-def test_welcome_token(client):
-    """Test token authentication in '/welcome_token' endpoint."""
+@pytest.fixture
+def responses_token(client):
+    """Prepare '/welcome_token' responses for test_welcome."""
     test_path = '/welcome_token'
     valid_token = environ['TOKEN_KEY']
+    responses = (client.get(test_path, params={'token': 'invalid'}),
+                 client.get(test_path, params={'token': valid_token}),
+                 client.get(test_path, params={'token': valid_token, 'format': 'html'}),
+                 client.get(test_path, params={'token': valid_token, 'format': 'json'}))
 
-    response_invalid = client.get(test_path, params={'token': 'invalid'})
-    response_valid_text = client.get(test_path, params={'token': valid_token})
-    response_valid_html = client.get(test_path, params={'token': valid_token, 'format': 'html'})
-    response_valid_json = client.get(test_path, params={'token': valid_token, 'format': 'json'})
+    return responses
 
-    assert response_invalid.status_code == 401
-    assert response_valid_text.status_code == 200
-    assert response_valid_text.headers['content-type'].startswith('text/plain')
-    assert response_valid_text.text == 'Welcome!'
-    assert response_valid_json.status_code == 200
-    assert response_valid_json.headers['content-type'].startswith('application/json')
-    assert response_valid_json.json() == {'message': 'Welcome!'}
-    assert response_valid_html.status_code == 200
-    assert response_valid_html.headers['content-type'].startswith('text/html')
-    assert '<h1>Welcome!</h1>' in response_valid_html.text
+
+def test_welcome(responses_session, responses_token):
+    """Test authentication in '/welcome_session' and '/welcome_token' endpoints."""
+    for responses in (responses_session, responses_token):
+        response_invalid, response_valid_text, response_valid_html, response_valid_json = responses
+
+        assert response_invalid.status_code == 401
+        assert response_valid_text.status_code == 200
+        assert response_valid_text.headers['content-type'].startswith('text/plain')
+        assert response_valid_text.text == 'Welcome!'
+        assert response_valid_json.status_code == 200
+        assert response_valid_json.headers['content-type'].startswith('application/json')
+        assert response_valid_json.json() == {'message': 'Welcome!'}
+        assert response_valid_html.status_code == 200
+        assert response_valid_html.headers['content-type'].startswith('text/html')
+        assert '<h1>Welcome!</h1>' in response_valid_html.text
