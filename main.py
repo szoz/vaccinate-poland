@@ -16,6 +16,8 @@ app = FastAPI()
 app.patients = []
 logger = getLogger('uvicorn')
 security = HTTPBasic()
+app.session_key = ''
+app.token_key = ''
 
 
 @app.get('/', tags=['helpers'])
@@ -88,6 +90,7 @@ def login_session(credentials: HTTPBasicCredentials = Depends(security)):
     check_credentials(credentials)
     response = Response(status_code=status.HTTP_201_CREATED)
     response.set_cookie('session_token', environ['SESSION_KEY'])
+    app.session_key = environ['SESSION_KEY']
     return response
 
 
@@ -96,6 +99,7 @@ def login_token(credentials: HTTPBasicCredentials = Depends(security)):
     """Return token if given credentials are valid."""
     logger.info(f'Login request with {credentials=}')
     check_credentials(credentials)
+    app.token_key = environ['TOKEN_KEY']
     return {'token': environ['TOKEN_KEY']}
 
 
@@ -115,7 +119,7 @@ def session_required(func):
     @wraps(func)
     def wrapper(request, *args, **kwargs):
         logger.info(f'Session validation {request.cookies=}')
-        if not compare_digest(request.cookies.get('session_token', ''), environ['SESSION_KEY']):
+        if not compare_digest(request.cookies.get('session_token', ''), environ['SESSION_KEY']) or not app.session_key:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED)
         return func(request, *args, **kwargs)
 
@@ -137,7 +141,7 @@ def token_required(func):
     @wraps(func)
     def wrapper(token, *args, **kwargs):
         logger.info(f'Token validation {token=}')
-        if not compare_digest(token, environ['TOKEN_KEY']):
+        if not compare_digest(token, environ['TOKEN_KEY']) or not app.token_key:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED)
         return func(token, *args, **kwargs)
 
@@ -163,6 +167,7 @@ def logout_session(request: Request):
         redirect_path += f'?{request.query_params}'
     response = RedirectResponse(URL(redirect_path), status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie('session_token')
+    app.session_key = ''
 
     return response
 
@@ -177,6 +182,7 @@ def logout_session(token: str = '', message_format: FormatEnum = Query(FormatEnu
         redirect_path += f'?format={message_format}'
     response = RedirectResponse(URL(redirect_path), status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie('session_token')
+    app.token_key = ''
 
     return response
 
