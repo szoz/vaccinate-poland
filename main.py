@@ -114,6 +114,7 @@ def session_required(func):
 
     @wraps(func)
     def wrapper(request, *args, **kwargs):
+        logger.info(f'Session validation {request.cookies=}')
         if not compare_digest(request.cookies.get('session_token', ''), environ['SESSION_KEY']):
             raise HTTPException(status.HTTP_401_UNAUTHORIZED)
         return func(request, *args, **kwargs)
@@ -135,6 +136,7 @@ def token_required(func):
 
     @wraps(func)
     def wrapper(token, *args, **kwargs):
+        logger.info(f'Token validation {token=}')
         if not compare_digest(token, environ['TOKEN_KEY']):
             raise HTTPException(status.HTTP_401_UNAUTHORIZED)
         return func(token, *args, **kwargs)
