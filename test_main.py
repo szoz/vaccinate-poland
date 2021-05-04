@@ -171,12 +171,58 @@ def test_welcome(responses_session, responses_token):
         response_invalid, response_valid_text, response_valid_html, response_valid_json = responses
 
         assert response_invalid.status_code == 401
+
         assert response_valid_text.status_code == 200
         assert response_valid_text.headers['content-type'].startswith('text/plain')
         assert response_valid_text.text == 'Welcome!'
+
         assert response_valid_json.status_code == 200
         assert response_valid_json.headers['content-type'].startswith('application/json')
         assert response_valid_json.json() == {'message': 'Welcome!'}
+
         assert response_valid_html.status_code == 200
         assert response_valid_html.headers['content-type'].startswith('text/html')
         assert '<h1>Welcome!</h1>' in response_valid_html.text
+
+
+def test_logout_session(client):
+    """Test authentication termination in '/logout_session' endpoint."""
+    test_path = '/logout_session'
+    valid_cookies = {'session_token': environ['SESSION_KEY']}
+    invalid_response = client.delete(test_path, cookies={'session_token': 'invalid'})
+    valid_responses = (client.delete(test_path, cookies=valid_cookies),
+                       client.delete(test_path, cookies=valid_cookies, params={'format': 'html'}),
+                       client.delete(test_path, cookies=valid_cookies, params={'format': 'json'}))
+    redirected_response = (client.send(vr.next) for vr in valid_responses)
+
+    assert invalid_response.status_code == 401
+
+    for response in valid_responses:
+        assert response.status_code in [302, 303]
+        assert response.cookies.get_dict() == {}
+
+    for response in redirected_response:
+        assert response.status_code == 200
+        assert '/logged_out' in response.url
+        assert 'Logged out!' in response.text
+
+
+def test_logout_token(client):
+    """Test authentication termination in '/token' endpoint."""
+    test_path = '/logout_token'
+    valid_token = environ['TOKEN_KEY']
+    invalid_response = client.delete(test_path, params={'token': 'invalid'})
+    valid_responses = (client.delete(test_path, params={'token': valid_token}),
+                       client.delete(test_path, params={'token': valid_token, 'format': 'html'}),
+                       client.delete(test_path, params={'token': valid_token, 'format': 'json'}))
+    redirected_response = (client.send(vr.next) for vr in valid_responses)
+
+    assert invalid_response.status_code == 401
+
+    for response in valid_responses:
+        assert response.status_code in [302, 303]
+
+    for response in redirected_response:
+        assert response.status_code == 200
+        assert '/logged_out' in response.url
+        assert 'Logged out!' in response.text

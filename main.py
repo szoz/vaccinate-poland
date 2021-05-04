@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request, Response, HTTPException, status, Depends, Query, Path
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
+from starlette.datastructures import URL
 from hashlib import sha512
 from datetime import timedelta, date
 from logging import getLogger
@@ -98,8 +99,8 @@ def login_token(credentials: HTTPBasicCredentials = Depends(security)):
     return {'token': environ['TOKEN_KEY']}
 
 
-def format_welcome(message: str, message_format: FormatEnum):
-    """Returns welcome message response based on given format."""
+def format_message(message: str, message_format: FormatEnum):
+    """Returns message in response based on given format."""
     if message_format.value == 'json':
         return JSONResponse({'message': f'{message}'})
     elif message_format.value == 'html':
@@ -113,7 +114,7 @@ def session_required(func):
 
     @wraps(func)
     def wrapper(request, *args, **kwargs):
-        if not compare_digest(request.cookies.get('session_token'), environ['SESSION_KEY']):
+        if not compare_digest(request.cookies.get('session_token', ''), environ['SESSION_KEY']):
             raise HTTPException(status.HTTP_401_UNAUTHORIZED)
         return func(request, *args, **kwargs)
 
@@ -122,11 +123,11 @@ def session_required(func):
 
 @app.get('/welcome_session', tags=['authentication'])
 @session_required
-def welcome_session(request: Request, welcome_format: FormatEnum = Query(FormatEnum.txt, alias='format')):
+def welcome_session(request: Request, message_format: FormatEnum = Query(FormatEnum.txt, alias='format')):
     """Return welcome message to user based on given response format. Endpoint only available to users with valid
     session cookie - request argument is used in decorator."""
 
-    return format_welcome('Welcome!', welcome_format)
+    return format_message('Welcome!', message_format)
 
 
 def token_required(func):
@@ -143,8 +144,42 @@ def token_required(func):
 
 @app.get('/welcome_token', tags=['authentication'])
 @token_required
-def welcome_token(token: str = '', welcome_format: FormatEnum = Query(FormatEnum.txt, alias='format')):
+def welcome_token(token: str = '', message_format: FormatEnum = Query(FormatEnum.txt, alias='format')):
     """Return welcome message to user based on given response format. Endpoint only available to users with valid token
      - token argument is used in decorator."""
 
-    return format_welcome('Welcome!', welcome_format)
+    return format_message('Welcome!', message_format)
+
+
+@app.delete('/logout_session', tags=['authentication'])
+@session_required
+def logout_session(request: Request):
+    """Logs out user by removing cookie session. Endpoint only available to users with valid session cookie - request
+    argument is used also in decorator."""
+    redirect_path = '/logged_out'
+    if request.query_params:
+        redirect_path += f'?{request.query_params}'
+    response = RedirectResponse(URL(redirect_path), status_code=status.HTTP_303_SEE_OTHER)
+    response.delete_cookie('session_token')
+
+    return response
+
+
+@app.delete('/logout_token', tags=['authentication'])
+@token_required
+def logout_session(token: str = '', message_format: FormatEnum = Query(FormatEnum.txt, alias='format')):
+    """Logs out user by removing token session. Endpoint only available to users with valid token - token argument
+    is used in decorator."""
+    redirect_path = '/logged_out'
+    if message_format != FormatEnum.txt:
+        redirect_path += f'?format={message_format}'
+    response = RedirectResponse(URL(redirect_path), status_code=status.HTTP_303_SEE_OTHER)
+    response.delete_cookie('session_token')
+
+    return response
+
+
+@app.get('/logged_out', tags=['authentication'])
+def logout(message_format: FormatEnum = Query(FormatEnum.txt, alias='format')):
+    """Return message to user after log out."""
+    return format_message('Logged out!', message_format)
