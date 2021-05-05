@@ -22,6 +22,7 @@ def patient_payloads():
                 {'name': 'Jan Stefan', 'surname': 'Nowak'},
                 {'name': 'Jan', 'surname': 'Nowak!@#$%^&*()_+/'}]
     delays = [10, 13, 8, 14, 8]
+
     return {'patients': patients, 'delays': delays}
 
 
@@ -41,6 +42,7 @@ def test_method(client):
                          'DELETE': 200,
                          'PUT': 200,
                          'OPTIONS': 200}
+
     responses = [client.request(method, test_path) for method in methods_to_status.keys()]
 
     for case, response in zip(methods_to_status.items(), responses):
@@ -54,7 +56,6 @@ def test_auth(client):
     hash_valid = sha512('haslo'.encode('utf8')).hexdigest()
     hash_invalid = sha512('inne_haslo'.encode('utf8')).hexdigest()
     hash_empty = sha512(''.encode('utf8')).hexdigest()
-    response_valid = client.get(test_path, params={'password': 'haslo', 'password_hash': hash_valid})
     params_invalid = [{'password': 'haslo', 'password_hash': hash_invalid},
                       {'password': 'haslo', 'password_hash': ''},
                       {'password': 'haslo'},
@@ -62,6 +63,8 @@ def test_auth(client):
                       {'password_hash': hash_empty},
                       {'password_hash': ''},
                       {}]
+
+    response_valid = client.get(test_path, params={'password': 'haslo', 'password_hash': hash_valid})
     responses_invalid = [client.get(test_path, params=params) for params in params_invalid]
 
     assert response_valid.status_code == 204
@@ -91,6 +94,7 @@ def test_patient(client, patient_payloads):
     """Test getting patient records in '/patient' endpoint based on data added in test_register test case."""
     test_path = '/patient/{}'
     patient_count = len(patient_payloads['patients'])
+
     responses_valid = [client.get(test_path.format(pid + 1)) for pid in range(patient_count)]
     responses_invalid = {400: client.get(test_path.format(-1)),
                          404: client.get(test_path.format(1000))}
@@ -108,121 +112,177 @@ def test_html(client):
     expected_text = f'<h1>Hello! Today date is {date.today()}</h1>'
 
     response = client.get(test_path)
+
     assert response.status_code == 200
     assert 'text/html' in response.headers['content-type']
     assert expected_text in response.text
 
 
-def test_login_session(client):
+@pytest.fixture
+def credentials():
+    """Return tuple with user login and password."""
+    return environ['USER_LOGIN'], environ['USER_PASSWORD']
+
+
+def test_login_session(client, credentials):
     """Test session receiving in '/login_session' endpoint."""
     test_path = '/login_session'
     credentials_invalid = ('admin', '123456')
-    credentials_valid = (environ['USER_LOGIN'], environ['USER_PASSWORD'])
 
     response_invalid = client.post(test_path, auth=credentials_invalid)
-    response_valid = client.post(test_path, auth=credentials_valid)
+    response_valid = client.post(test_path, auth=credentials)
+
     assert response_invalid.status_code == 401
     assert response_valid.status_code == 201
-    assert ['session_token'] == response_valid.cookies.keys()
+    assert response_valid.cookies.get('session_token')
 
 
-def test_login_token(client):
+def test_login_token(client, credentials):
     """Test token receiving in '/login_token' endpoint."""
     test_path = '/login_token'
     credentials_invalid = ('admin', '123456')
-    credentials_valid = (environ['USER_LOGIN'], environ['USER_PASSWORD'])
 
     response_invalid = client.post(test_path, auth=credentials_invalid)
-    response_valid = client.post(test_path, auth=credentials_valid)
+    response_valid = client.post(test_path, auth=credentials)
+
     assert response_invalid.status_code == 401
     assert response_valid.status_code == 201
-    assert ['token'] == list(response_valid.json().keys())
+    assert response_valid.json().get('token')
 
 
-@pytest.fixture
-def responses_session(client):
-    """Prepare '/welcome_session' responses for test_welcome."""
+def test_welcome_session(client, credentials):
+    """Test authentication in '/welcome_session' endpoint."""
+    login_path = '/login_session'
     test_path = '/welcome_session'
-    valid_cookies = {'session_token': environ['SESSION_KEY']}
-    responses = (client.get(test_path, cookies={'session_token': 'invalid'}),
-                 client.get(test_path, cookies=valid_cookies),
-                 client.get(test_path, cookies=valid_cookies, params={'format': 'html'}),
-                 client.get(test_path, cookies=valid_cookies, params={'format': 'json'}))
+    session = client.post(login_path, auth=credentials).cookies
 
-    return responses
+    response_invalid = client.get(test_path, cookies={'session_token': 'invalid'})
+    response_blank = client.get(test_path, cookies={'session_token': ''})
+    response_valid_text = client.get(test_path, cookies=session)
+    response_valid_html = client.get(test_path, cookies=session, params={'format': 'html'})
+    response_valid_json = client.get(test_path, cookies=session, params={'format': 'json'})
+
+    assert response_invalid.status_code == 401
+    assert response_blank.status_code == 401
+
+    assert response_valid_text.status_code == 200
+    assert response_valid_text.headers['content-type'].startswith('text/plain')
+    assert response_valid_text.text == 'Welcome!'
+
+    assert response_valid_json.status_code == 200
+    assert response_valid_json.headers['content-type'].startswith('application/json')
+    assert response_valid_json.json() == {'message': 'Welcome!'}
+
+    assert response_valid_html.status_code == 200
+    assert response_valid_html.headers['content-type'].startswith('text/html')
+    assert '<h1>Welcome!</h1>' in response_valid_html.text
 
 
-@pytest.fixture
-def responses_token(client):
-    """Prepare '/welcome_token' responses for test_welcome."""
+def test_welcome_token(client, credentials):
+    """Test authentication in '/welcome_token' endpoint."""
+    login_path = '/login_token'
     test_path = '/welcome_token'
-    valid_token = environ['TOKEN_KEY']
-    responses = (client.get(test_path, params={'token': 'invalid'}),
-                 client.get(test_path, params={'token': valid_token}),
-                 client.get(test_path, params={'token': valid_token, 'format': 'html'}),
-                 client.get(test_path, params={'token': valid_token, 'format': 'json'}))
+    token = client.post(login_path, auth=credentials).json()['token']
 
-    return responses
+    response_invalid = client.get(test_path, params={'token': 'invalid'})
+    response_blank = client.get(test_path, params={'token': ''})
+    response_valid_text = client.get(test_path, params={'token': token})
+    response_valid_html = client.get(test_path, params={'token': token, 'format': 'html'})
+    response_valid_json = client.get(test_path, params={'token': token, 'format': 'json'})
 
+    assert response_invalid.status_code == 401
+    assert response_blank.status_code == 401
 
-def test_welcome(responses_session, responses_token):
-    """Test authentication in '/welcome_session' and '/welcome_token' endpoints."""
-    for responses in (responses_session, responses_token):
-        response_invalid, response_valid_text, response_valid_html, response_valid_json = responses
+    assert response_valid_text.status_code == 200
+    assert response_valid_text.headers['content-type'].startswith('text/plain')
+    assert response_valid_text.text == 'Welcome!'
 
-        assert response_invalid.status_code == 401
+    assert response_valid_json.status_code == 200
+    assert response_valid_json.headers['content-type'].startswith('application/json')
+    assert response_valid_json.json() == {'message': 'Welcome!'}
 
-        assert response_valid_text.status_code == 200
-        assert response_valid_text.headers['content-type'].startswith('text/plain')
-        assert response_valid_text.text == 'Welcome!'
-
-        assert response_valid_json.status_code == 200
-        assert response_valid_json.headers['content-type'].startswith('application/json')
-        assert response_valid_json.json() == {'message': 'Welcome!'}
-
-        assert response_valid_html.status_code == 200
-        assert response_valid_html.headers['content-type'].startswith('text/html')
-        assert '<h1>Welcome!</h1>' in response_valid_html.text
+    assert response_valid_html.status_code == 200
+    assert response_valid_html.headers['content-type'].startswith('text/html')
+    assert '<h1>Welcome!</h1>' in response_valid_html.text
 
 
-def test_logout_session(client):
+def test_logout_session(client, credentials):
     """Test authentication termination in '/logout_session' endpoint."""
+    login_path = '/login_session'
     test_path = '/logout_session'
-    valid_cookies = {'session_token': environ['SESSION_KEY']}
-    invalid_response = client.delete(test_path, cookies={'session_token': 'invalid'})
-    valid_responses = (client.delete(test_path, cookies=valid_cookies),
-                       client.delete(test_path, cookies=valid_cookies, params={'format': 'html'}),
-                       client.delete(test_path, cookies=valid_cookies, params={'format': 'json'}))
-    redirected_response = (client.send(vr.next) for vr in valid_responses)
 
-    assert invalid_response.status_code == 401
+    client.post(login_path, auth=credentials)  # Initialize session in app cache
+    response_invalid = client.delete(test_path, cookies={'session_token': 'invalid'})
+    response_blank = client.delete(test_path, cookies={'session_token': ''})
+    responses_valid, responses_redirected = [], []
+    params_valid = [{}, {'format': 'html'}, {'format': 'json'}]
+    for params in params_valid:
+        session = client.post(login_path, auth=credentials).cookies
+        response = client.delete(test_path, cookies=session, params=params)
+        responses_valid.append(response)
+        responses_redirected.append(client.send(response.next))
+    session = client.post(login_path, auth=credentials).cookies
+    client.delete(test_path, cookies=session)
+    response_duplicate = client.delete(test_path, cookies=session)
 
-    for response in valid_responses:
-        assert response.status_code in [302, 303]
-        assert response.cookies.get_dict() == {}
+    assert response_invalid.status_code == 401
+    assert response_blank.status_code == 401
+    assert response_duplicate.status_code == 401
 
-    for response in redirected_response:
-        assert response.status_code == 200
-        assert '/logged_out' in response.url
-        assert 'Logged out!' in response.text
+    for rv, rr in zip(responses_valid, responses_redirected):
+        assert rv.status_code in [302, 303]
+        assert rv.cookies.get_dict() == {}
+        assert rr.status_code == 200
+        assert '/logged_out' in rr.url
+        assert 'Logged out!' in rr.text
 
 
-def test_logout_token(client):
-    """Test authentication termination in '/token' endpoint."""
+def test_logout_token(client, credentials):
+    """Test authentication termination in '/logout_token' endpoint."""
+    login_path = '/login_token'
     test_path = '/logout_token'
-    valid_token = environ['TOKEN_KEY']
-    invalid_response = client.delete(test_path, params={'token': 'invalid'})
-    valid_responses = (client.delete(test_path, params={'token': valid_token}),
-                       client.delete(test_path, params={'token': valid_token, 'format': 'html'}),
-                       client.delete(test_path, params={'token': valid_token, 'format': 'json'}))
-    redirected_response = (client.send(vr.next) for vr in valid_responses)
 
-    assert invalid_response.status_code == 401
+    client.post(login_path, auth=credentials)  # Initialize session in app cache
+    response_invalid = client.delete(test_path, params={'token': 'invalid'})
+    response_blank = client.delete(test_path, params={'token': ''})
+    responses_valid, responses_redirected = [], []
+    params_valid = [{}, {'format': 'html'}, {'format': 'json'}]
+    for params in params_valid:
+        token = client.post(login_path, auth=credentials).json()['token']
+        response = client.delete(test_path, params={'token': token, **params})
+        responses_valid.append(response)
+        responses_redirected.append(client.send(response.next))
+    token = client.post(login_path, auth=credentials).cookies
+    client.delete(test_path, params={'token': token})
+    response_duplicate = client.delete(test_path, params={'token': token})
 
-    for response in valid_responses:
-        assert response.status_code in [302, 303]
+    assert response_invalid.status_code == 401
+    assert response_blank.status_code == 401
+    assert response_duplicate.status_code == 401
 
-    for response in redirected_response:
+    for rv, rr in zip(responses_valid, responses_redirected):
+        assert rv.status_code in [302, 303]
+        assert rv.cookies.get_dict() == {}
+        assert rr.status_code == 200
+        assert '/logged_out' in rr.url
+        assert 'Logged out!' in rr.text
+
+
+def test_multiple_login(client, credentials):
+    """Tests caching 3 last sessions in '/logout_session' and 3 last tokens in '/logout_token' endpoint."""
+    login_session_path = '/login_session'
+    login_token_path = '/login_token'
+    welcome_session_path = '/welcome_session'
+    welcome_token_path = '/welcome_token'
+
+    sessions = [client.post(login_session_path, auth=credentials).cookies for _ in range(4)]
+    tokens = [client.post(login_token_path, auth=credentials).json()['token'] for _ in range(4)]
+    responses_session = [client.get(welcome_session_path, cookies=session) for session in sessions]
+    responses_token = [client.get(welcome_token_path, params={'token': token}) for token in tokens]
+
+    assert responses_session[0].status_code == 401
+    assert responses_token[0].status_code == 401
+    for response in responses_session[1:]:
         assert response.status_code == 200
-        assert '/logged_out' in response.url
-        assert 'Logged out!' in response.text
+    for response in responses_token[1:]:
+        assert response.status_code == 200
