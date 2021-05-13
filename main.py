@@ -1,24 +1,16 @@
-from fastapi import FastAPI, Request, Response, HTTPException, status, Depends, Query, Path
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
-from starlette.datastructures import URL
+from fastapi import FastAPI, Request, Response, HTTPException, status, Path
+from fastapi.responses import HTMLResponse
 from hashlib import sha512
 from datetime import timedelta, date
-from logging import getLogger
-from secrets import compare_digest, token_hex
-from os import environ
-from functools import wraps
-from collections import deque
 
-from models import UnregisteredPatient, Patient, FormatEnum
+from models import UnregisteredPatient, Patient
+from auth import router
+from utils import logger
 
 app = FastAPI()
 
 app.patients = []
-logger = getLogger('uvicorn')
-security = HTTPBasic()
-app.session_keys = deque([], maxlen=3)
-app.token_keys = deque([], maxlen=3)
+app.include_router(router)
 
 
 @app.get('/', tags=['helpers'])
@@ -44,7 +36,7 @@ def validate_password(password: str = '', password_hash: str = ''):
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@app.post('/register', status_code=status.HTTP_201_CREATED, response_model=Patient, tags=['register'])
+@app.post('/register', status_code=status.HTTP_201_CREATED, response_model=Patient, tags=['patient'])
 def register_patient(unregistered_patient: UnregisteredPatient):
     """Register patient and returns saved record."""
     vaccination_delay = timedelta(days=len([letter for letter
@@ -69,135 +61,8 @@ def get_patient(patient_id: int = Path(0, alias='id')):
     return app.patients[patient_id - 1]
 
 
-@app.get('/hello')
+@app.get('/hello', tags=['helpers'])
 def read_html():
     """Return simple HTML response."""
     text = f'<html><body><h1>Hello! Today date is {date.today()}</h1></body></html>'
     return HTMLResponse(text)
-
-
-def check_credentials(credentials: HTTPBasicCredentials):
-    """Raises exception if given credentials not match (resistant to time attacks)."""
-    correct_username = compare_digest(credentials.username, environ['USER_LOGIN'])
-    correct_password = compare_digest(credentials.password, environ['USER_PASSWORD'])
-    if not correct_username or not correct_password:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED)
-
-
-def create_login_key():
-    """Return string with random 16-byte value."""
-    return token_hex(16)
-
-
-@app.post('/login_session', tags=['authentication'])
-def login_session(credentials: HTTPBasicCredentials = Depends(security)):
-    """Create session if given credentials are valid."""
-    logger.info(f'Login request with {credentials=}')
-    check_credentials(credentials)
-    response = Response(status_code=status.HTTP_201_CREATED)
-    session = create_login_key()
-    response.set_cookie('session_token', session)
-    app.session_keys.append(session)
-    return response
-
-
-@app.post('/login_token', status_code=status.HTTP_201_CREATED, tags=['authentication'])
-def login_token(credentials: HTTPBasicCredentials = Depends(security)):
-    """Return token if given credentials are valid."""
-    logger.info(f'Login request with {credentials=}')
-    check_credentials(credentials)
-    token = create_login_key()
-    app.token_keys.append(token)
-    return {'token': token}
-
-
-def format_message(message: str, message_format: FormatEnum):
-    """Returns message in response based on given format."""
-    if message_format.value == 'json':
-        return JSONResponse({'message': f'{message}'})
-    elif message_format.value == 'html':
-        return HTMLResponse(f'<html><body><h1>{message}</h1></body></html>')
-
-    return PlainTextResponse(f'{message}')
-
-
-def session_required(func):
-    """Raises exception if request argument in decorated view function doesn't contain valid session cookie."""
-
-    @wraps(func)
-    def wrapper(request, *args, **kwargs):
-        logger.info(f'Session validation {request.cookies=}')
-        session = request.cookies.get('session_token', '')
-        if session not in app.session_keys:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED)
-        return func(request, *args, **kwargs)
-
-    return wrapper
-
-
-@app.get('/welcome_session', tags=['authentication'])
-@session_required
-def welcome_session(request: Request, message_format: FormatEnum = Query(FormatEnum.txt, alias='format')):
-    """Return welcome message to user based on given response format. Endpoint only available to users with valid
-    session cookie - request argument is used in decorator."""
-
-    return format_message('Welcome!', message_format)
-
-
-def token_required(func):
-    """Raises exception if token argument in decorated view function is invalid."""
-
-    @wraps(func)
-    def wrapper(token, *args, **kwargs):
-        logger.info(f'Token validation {token=}')
-        if token not in app.token_keys:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED)
-        return func(token, *args, **kwargs)
-
-    return wrapper
-
-
-@app.get('/welcome_token', tags=['authentication'])
-@token_required
-def welcome_token(token: str = '', message_format: FormatEnum = Query(FormatEnum.txt, alias='format')):
-    """Return welcome message to user based on given response format. Endpoint only available to users with valid token
-     - token argument is used in decorator."""
-
-    return format_message('Welcome!', message_format)
-
-
-@app.delete('/logout_session', tags=['authentication'])
-@session_required
-def logout_session(request: Request):
-    """Logs out user by removing cookie session. Endpoint only available to users with valid session cookie - request
-    argument is used also in decorator."""
-    redirect_path = '/logged_out'
-    if request.query_params:
-        redirect_path += f'?{request.query_params}'
-    response = RedirectResponse(URL(redirect_path), status_code=status.HTTP_303_SEE_OTHER)
-    session = request.cookies['session_token']
-    response.delete_cookie('session_token')
-    app.session_keys.remove(session)
-
-    return response
-
-
-@app.delete('/logout_token', tags=['authentication'])
-@token_required
-def logout_session(token: str = '', message_format: FormatEnum = Query(FormatEnum.txt, alias='format')):
-    """Logs out user by removing token session. Endpoint only available to users with valid token - token argument
-    is used in decorator."""
-    redirect_path = '/logged_out'
-    if message_format != FormatEnum.txt:
-        redirect_path += f'?format={message_format}'
-    response = RedirectResponse(URL(redirect_path), status_code=status.HTTP_303_SEE_OTHER)
-    response.delete_cookie('session_token')
-    app.token_keys.remove(token)
-
-    return response
-
-
-@app.get('/logged_out', tags=['authentication'])
-def logout(message_format: FormatEnum = Query(FormatEnum.txt, alias='format')):
-    """Return message to user after log out."""
-    return format_message('Logged out!', message_format)
